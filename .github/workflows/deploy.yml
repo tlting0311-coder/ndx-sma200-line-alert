@@ -41,16 +41,12 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
 
-      - name: Authenticate Docker to Artifact Registry
-        run: |
-          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
-
       - name: Build and push image
         env:
           IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/ndx-signal:${{ github.sha }}
         run: |
-          docker build --tag "$IMAGE" .
-          docker push "$IMAGE"
+          gcloud config set project "$PROJECT_ID"
+          gcloud builds submit --tag "$IMAGE" .
 
       - name: Deploy webhook service
         env:
