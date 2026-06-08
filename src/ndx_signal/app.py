@@ -100,11 +100,7 @@ def _handle_line_event(
 
     event_type = event.get("type")
     if event_type == "follow":
-        _reply_if_possible(
-            line_client,
-            reply_token,
-            "歡迎使用 Nasdaq 100 SMA200 訊號通知。請輸入「訂閱」開始接收通知。",
-        )
+        _reply_if_possible(line_client, reply_token, _format_help_message())
         return
 
     if event_type != "message":
@@ -112,7 +108,7 @@ def _handle_line_event(
 
     message = event.get("message") or {}
     if message.get("type") != "text":
-        _reply_if_possible(line_client, reply_token, "請輸入「訂閱」、「取消」或「狀態」。")
+        _reply_if_possible(line_client, reply_token, _format_help_message())
         return
 
     text = str(message.get("text", "")).strip()
@@ -128,6 +124,8 @@ def _handle_line_event(
         else:
             reply = "目前狀態：尚未訂閱。請輸入「訂閱」開始接收通知。"
         _reply_if_possible(line_client, reply_token, reply)
+    elif _is_help_query(text):
+        _reply_if_possible(line_client, reply_token, _format_help_message())
     elif _is_market_status_query(text):
         try:
             status = evaluate_sma_status(
@@ -144,11 +142,37 @@ def _handle_line_event(
             reply = "暫時查不到 Nasdaq 100 SMA200 行情資料，請稍後再試。"
         _reply_if_possible(line_client, reply_token, reply)
     else:
-        _reply_if_possible(
-            line_client,
-            reply_token,
-            "請輸入「訂閱」、「取消」、「狀態」或「NDX」。",
-        )
+        _reply_if_possible(line_client, reply_token, _format_help_message())
+
+
+def _format_help_message() -> str:
+    return (
+        "【可用功能】\n"
+        "訂閱：接收 Nasdaq 100 穿越 SMA200 的買入/賣出通知\n"
+        "取消：停止接收自動通知\n"
+        "狀態：查詢目前是否已訂閱\n"
+        "NDX：查最新收盤價、SMA200、距離均線幾點與百分比\n"
+        "功能：再次顯示這份選單\n"
+        "訊號提醒，非投資建議。"
+    )
+
+
+def _is_help_query(text: str) -> bool:
+    normalized = text.strip().lower().replace(" ", "")
+    keywords = (
+        "help",
+        "?",
+        "？",
+        "功能",
+        "幫助",
+        "指令",
+        "使用說明",
+        "怎麼用",
+        "可以查詢什麼",
+        "可查詢什麼",
+        "查詢什麼",
+    )
+    return any(keyword in normalized for keyword in keywords)
 
 
 def _is_market_status_query(text: str) -> bool:

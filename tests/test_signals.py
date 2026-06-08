@@ -9,6 +9,7 @@ from ndx_signal.signals import (
     InsufficientDataError,
     evaluate_sma_cross,
     evaluate_sma_status,
+    format_signal_message,
     format_sma_status_message,
 )
 
@@ -33,6 +34,28 @@ def test_sell_signal_when_close_crosses_below_sma():
 
     assert result.signal == SELL
     assert result.signal_key == "2026-01-04:SELL"
+
+
+def test_upward_breakout_message_rotates_from_qqq_to_tqqq():
+    result = evaluate_sma_cross(bars([10, 10, 10, 12]), window=3, symbol="^NDX")
+
+    message = format_signal_message(result)
+
+    assert "【Nasdaq 100 站回 200日均線】" in message
+    assert "策略動作：賣出 QQQ，all in TQQQ" in message
+    assert "趨勢轉強，切換進攻配置。" in message
+    assert "依你的策略設定提醒，非投資建議。" in message
+
+
+def test_downward_breakdown_message_rotates_from_tqqq_to_qqq():
+    result = evaluate_sma_cross(bars([10, 10, 10, 8]), window=3, symbol="^NDX")
+
+    message = format_signal_message(result)
+
+    assert "【Nasdaq 100 跌破 200日均線】" in message
+    assert "策略動作：賣出 TQQQ，all in QQQ" in message
+    assert "趨勢轉弱，切換防守配置。" in message
+    assert "依你的策略設定提醒，非投資建議。" in message
 
 
 def test_none_when_price_does_not_cross():

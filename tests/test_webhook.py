@@ -15,6 +15,15 @@ from tests.fakes import FakeLineClient, FakeStore
 
 
 SECRET = "test-secret"
+HELP_MESSAGE = (
+    "【可用功能】\n"
+    "訂閱：接收 Nasdaq 100 穿越 SMA200 的買入/賣出通知\n"
+    "取消：停止接收自動通知\n"
+    "狀態：查詢目前是否已訂閱\n"
+    "NDX：查最新收盤價、SMA200、距離均線幾點與百分比\n"
+    "功能：再次顯示這份選單\n"
+    "訊號提醒，非投資建議。"
+)
 
 
 def signed_headers(body: bytes):
@@ -33,6 +42,14 @@ def message_event(text, user_id="U1", reply_token="reply-token"):
         "replyToken": reply_token,
         "source": {"type": "user", "userId": user_id},
         "message": {"type": "text", "text": text},
+    }
+
+
+def follow_event(user_id="U1", reply_token="reply-token"):
+    return {
+        "type": "follow",
+        "replyToken": reply_token,
+        "source": {"type": "user", "userId": user_id},
     }
 
 
@@ -101,7 +118,25 @@ def test_unknown_text_replies_with_available_commands():
 
     assert response.status_code == 200
     assert store.is_subscribed("U1") is False
-    assert line_client.reply_calls == [("reply-token", "請輸入「訂閱」、「取消」、「狀態」或「NDX」。")]
+    assert line_client.reply_calls == [("reply-token", HELP_MESSAGE)]
+
+
+def test_follow_event_replies_with_help_menu():
+    client, store, line_client = make_client()
+
+    response = post_event(client, follow_event())
+
+    assert response.status_code == 200
+    assert line_client.reply_calls == [("reply-token", HELP_MESSAGE)]
+
+
+def test_help_query_replies_with_help_menu_instead_of_market_query():
+    client, store, line_client = make_client()
+
+    response = post_event(client, message_event("可以查詢什麼？"))
+
+    assert response.status_code == 200
+    assert line_client.reply_calls == [("reply-token", HELP_MESSAGE)]
 
 
 def test_ndx_query_replies_with_latest_close_and_sma_distance():

@@ -82,16 +82,30 @@ def _bars_with_sma(bars: List[PriceBar], window: int) -> List[Tuple[PriceBar, fl
 
 
 def format_signal_message(result: SignalResult) -> str:
-    action = "買入訊號" if result.signal == BUY else "賣出訊號"
+    if result.signal == BUY:
+        title = "Nasdaq 100 站回 200日均線"
+        playbook = "賣出 QQQ，all in TQQQ"
+        tone = "趨勢轉強，切換進攻配置。"
+    elif result.signal == SELL:
+        title = "Nasdaq 100 跌破 200日均線"
+        playbook = "賣出 TQQQ，all in QQQ"
+        tone = "趨勢轉弱，切換防守配置。"
+    else:
+        title = "無新訊號"
+        playbook = "維持原策略"
+        tone = "先坐穩，等下一個明確方向。"
+
     return (
-        f"【Nasdaq 100 SMA200 {action}】\n"
+        f"【{title}】\n"
+        f"策略動作：{playbook}\n"
+        f"{tone}\n"
         f"標的：{result.symbol}\n"
         f"日期：{result.signal_date.isoformat()}\n"
         f"收盤價：{result.close:,.2f}\n"
         f"SMA200：{result.sma:,.2f}\n"
         f"前一交易日：{result.previous_date.isoformat()} "
         f"收盤 {result.previous_close:,.2f} / SMA {result.previous_sma:,.2f}\n"
-        "訊號提醒，非投資建議。"
+        "依你的策略設定提醒，非投資建議。"
     )
 
 

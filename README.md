@@ -2,8 +2,8 @@
 
 這個專案會在 Nasdaq 100 (`^NDX`) 收盤價「穿越」200 日 SMA 時，透過 LINE Messaging API 私訊所有已訂閱使用者：
 
-- 收盤價由 SMA200 下方穿上去：買入訊號
-- 收盤價由 SMA200 上方跌破：賣出訊號
+- 收盤價由 SMA200 下方穿上去：通知 `賣出 QQQ，all in TQQQ`
+- 收盤價由 SMA200 上方跌破：通知 `賣出 TQQQ，all in QQQ`
 - 同一個交易日同一個訊號只通知一次
 
 LINE Notify 已於 2025-03-31 終止，因此本專案使用 LINE Official Account + Messaging API。
@@ -68,6 +68,9 @@ https://YOUR_CLOUD_RUN_SERVICE_URL/line/webhook
 - `取消`：取消通知
 - `狀態`：查詢目前是否訂閱
 - `NDX`、`查詢`、`現在多少`、`200日均線`：查詢最新可取得的 `^NDX` 收盤價、SMA200、距離均線點數與百分比
+- `功能`、`幫助`、`可以查詢什麼`：顯示可用功能選單
+
+請在 LINE Official Account Manager 的 `回應設定` 關閉內建 `自動回應訊息`，避免 LINE 預設訊息和 webhook 回覆同時出現。
 
 ## Google Cloud Deployment
 
