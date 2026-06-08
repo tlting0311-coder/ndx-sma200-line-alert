@@ -1,0 +1,11 @@
+.git/
+.github/
+.pytest_cache/
+.venv/
+__pycache__/
+*.pyc
+github-deploy-key.json
+*.key.json
+gha-creds-*.json
+ndx-sma200-line-alert.zip
+ndx-sma200-line-alert/

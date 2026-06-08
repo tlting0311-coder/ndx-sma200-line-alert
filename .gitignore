@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+dist/
+build/
+*.egg-info/
+github-deploy-key.json
+*.key.json
+gha-creds-*.json

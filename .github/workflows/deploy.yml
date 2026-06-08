@@ -1,0 +1,89 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-run-deploy
+  cancel-in-progress: true
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: ${{ secrets.GCP_REGION }}
+  ARTIFACT_REPOSITORY: ndx-signal
+  SERVICE_NAME: ndx-signal-webhook
+  JOB_NAME: ndx-signal-check
+  SYMBOL: ^NDX
+  SMA_WINDOW: "200"
+  TIMEZONE: Asia/Taipei
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: github-actions-deploy@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Build and push image
+        env:
+          IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/ndx-signal:${{ github.sha }}
+        run: |
+          gcloud config set project "$PROJECT_ID"
+          gcloud builds submit --tag "$IMAGE" .
+
+      - name: Deploy webhook service
+        env:
+          IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/ndx-signal:${{ github.sha }}
+          RUN_SA: ndx-signal-run@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+        run: |
+          gcloud run deploy "$SERVICE_NAME" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --service-account "$RUN_SA" \
+            --allow-unauthenticated \
+            --set-env-vars "SYMBOL=$SYMBOL,SMA_WINDOW=$SMA_WINDOW,TIMEZONE=$TIMEZONE,GOOGLE_CLOUD_PROJECT=$PROJECT_ID" \
+            --set-secrets "LINE_CHANNEL_ACCESS_TOKEN=line-channel-access-token:latest,LINE_CHANNEL_SECRET=line-channel-secret:latest"
+
+      - name: Create or update scheduled check job
+        env:
+          IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/ndx-signal:${{ github.sha }}
+          RUN_SA: ndx-signal-run@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+        run: |
+          if gcloud run jobs describe "$JOB_NAME" --region "$REGION" >/dev/null 2>&1; then
+            JOB_ACTION=update
+          else
+            JOB_ACTION=create
+          fi
+
+          gcloud run jobs "$JOB_ACTION" "$JOB_NAME" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --service-account "$RUN_SA" \
+            --command=python \
+            "--args=-m,ndx_signal,check,--send" \
+            --set-env-vars "SYMBOL=$SYMBOL,SMA_WINDOW=$SMA_WINDOW,TIMEZONE=$TIMEZONE,GOOGLE_CLOUD_PROJECT=$PROJECT_ID" \
+            --set-secrets "LINE_CHANNEL_ACCESS_TOKEN=line-channel-access-token:latest"
+
+      - name: Show webhook URL
+        run: |
+          URL=$(gcloud run services describe "$SERVICE_NAME" \
+            --region "$REGION" \
+            --format="value(status.url)")
+          echo "Webhook URL: ${URL}/line/webhook"
