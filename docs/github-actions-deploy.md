@@ -9,6 +9,8 @@
 
 Cloud Scheduler、LINE secrets、Firestore、Artifact Registry、runtime service account 仍是一次性基礎設施，建立過就不用每次重做。
 
+Workflow 會在 GitHub Actions runner 直接 `docker build` 並 push 到 Artifact Registry，不使用 Cloud Build，因此不需要存取 `*_cloudbuild` 暫存 bucket。
+
 ## 1. 建立 GitHub repo secrets
 
 到你的 GitHub repo：

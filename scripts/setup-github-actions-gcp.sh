@@ -25,7 +25,10 @@ POOL_RESOURCE="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools
 
 gcloud config set project "$PROJECT_ID"
 
-gcloud services enable iam.googleapis.com iamcredentials.googleapis.com
+gcloud services enable \
+  cloudresourcemanager.googleapis.com \
+  iam.googleapis.com \
+  iamcredentials.googleapis.com
 
 gcloud iam service-accounts create github-actions-deploy \
   --display-name="GitHub Actions deploy" || true
@@ -35,13 +38,14 @@ for ROLE in \
   roles/run.admin \
   roles/artifactregistry.writer \
   roles/storage.objectAdmin \
-  roles/secretmanager.secretAccessor; do
+  roles/secretmanager.secretAccessor \
+  roles/serviceusage.serviceUsageConsumer; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${GITHUB_DEPLOY_SA}" \
     --role="$ROLE"
 done
 
-gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${GITHUB_DEPLOY_SA}" \
   --role="roles/iam.serviceAccountUser"
 
@@ -79,7 +83,7 @@ else
     --attribute-condition="$ATTRIBUTE_CONDITION"
 fi
 
-gcloud iam service-accounts add-iam-policy-binding "$GITHUB_DEPLOY_SA" \
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="principalSet://iam.googleapis.com/${POOL_RESOURCE}/attribute.repository/${GITHUB_REPOSITORY}" \
   --role="roles/iam.workloadIdentityUser"
 

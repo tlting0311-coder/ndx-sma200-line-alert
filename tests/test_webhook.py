@@ -4,11 +4,13 @@ import base64
 import hashlib
 import hmac
 import json
+from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
 from ndx_signal.app import create_app
 from ndx_signal.config import Settings
+from ndx_signal.models import PriceBar
 from tests.fakes import FakeLineClient, FakeStore
 
 
@@ -34,16 +36,27 @@ def message_event(text, user_id="U1", reply_token="reply-token"):
     }
 
 
-def make_client():
+def fake_market_loader(symbol):
+    start = date(2026, 1, 1)
+    return [
+        PriceBar(date=start + timedelta(days=index), close=close)
+        for index, close in enumerate([10.0, 10.0, 16.0])
+    ]
+
+
+def make_client(market_loader=fake_market_loader):
     store = FakeStore()
     line_client = FakeLineClient()
     app = create_app(
         settings=Settings(
+            symbol="^NDX",
+            sma_window=3,
             line_channel_secret=SECRET,
             line_channel_access_token="token",
         ),
         store=store,
         line_client=line_client,
+        market_loader=market_loader,
     )
     return TestClient(app), store, line_client
 
@@ -88,7 +101,39 @@ def test_unknown_text_replies_with_available_commands():
 
     assert response.status_code == 200
     assert store.is_subscribed("U1") is False
-    assert line_client.reply_calls == [("reply-token", "請輸入「訂閱」、「取消」或「狀態」。")]
+    assert line_client.reply_calls == [("reply-token", "請輸入「訂閱」、「取消」、「狀態」或「NDX」。")]
+
+
+def test_ndx_query_replies_with_latest_close_and_sma_distance():
+    client, store, line_client = make_client()
+
+    response = post_event(client, message_event("NDX現在多少"))
+
+    assert response.status_code == 200
+    assert line_client.reply_calls == [
+        (
+            "reply-token",
+            "【Nasdaq 100 SMA3 查詢】\n"
+            "標的：^NDX\n"
+            "日期：2026-01-03\n"
+            "最新收盤價：16.00\n"
+            "SMA3：12.00\n"
+            "距離均線：高於 4.00 點 (+4.00 / +33.33%)\n"
+            "資料為最新可取得行情，非投資建議。",
+        )
+    ]
+
+
+def test_ndx_query_handles_market_data_failure():
+    def failing_loader(symbol):
+        raise RuntimeError("market unavailable")
+
+    client, store, line_client = make_client(market_loader=failing_loader)
+
+    response = post_event(client, message_event("查詢"))
+
+    assert response.status_code == 200
+    assert line_client.reply_calls == [("reply-token", "暫時查不到 Nasdaq 100 SMA200 行情資料，請稍後再試。")]
 
 
 def test_invalid_signature_is_rejected():

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from ndx_signal.models import BUY, PushResult, PriceBar
-from ndx_signal.runner import run_check
+from ndx_signal.runner import run_check, run_test_push
 from tests.fakes import FakeLineClient, FakeStore
 
 
@@ -68,3 +68,30 @@ def test_retryable_failure_does_not_mark_signal_as_latest():
 
     assert summary.retryable_failed_count == 1
     assert store.latest_signal_key is None
+
+
+def test_test_push_sends_message_without_changing_latest_signal():
+    store = FakeStore(["U1", "U2"])
+    store.latest_signal_key = "2026-01-04:BUY"
+    line_client = FakeLineClient()
+
+    summary = run_test_push(store, line_client, "test message")
+
+    assert summary.subscriber_count == 2
+    assert summary.sent_count == 2
+    assert summary.failed_count == 0
+    assert line_client.push_calls == [("U1", "test message"), ("U2", "test message")]
+    assert store.latest_signal_key == "2026-01-04:BUY"
+
+
+def test_test_push_counts_failures():
+    store = FakeStore(["U1", "U2"])
+    line_client = FakeLineClient(
+        {"U2": PushResult(ok=False, retryable=True, status_code=500, error="server error")}
+    )
+
+    summary = run_test_push(store, line_client, "test message")
+
+    assert summary.sent_count == 1
+    assert summary.failed_count == 1
+    assert summary.retryable_failed_count == 1

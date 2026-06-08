@@ -13,9 +13,11 @@ LINE Notify 已於 2025-03-31 終止，因此本專案使用 LINE Official Accou
 ```bash
 python -m ndx_signal check --dry-run
 python -m ndx_signal check --send
+python -m ndx_signal test-push
 ```
 
 `--dry-run` 會讀取行情、計算訊號、列出訂閱人數，但不發送 LINE。`--send` 會在新訊號出現時推播。
+`test-push` 會發測試訊息給所有 active 訂閱者，但不會修改正式訊號狀態。
 
 ## Required Configuration
 
@@ -65,6 +67,7 @@ https://YOUR_CLOUD_RUN_SERVICE_URL/line/webhook
 - `訂閱`：加入通知
 - `取消`：取消通知
 - `狀態`：查詢目前是否訂閱
+- `NDX`、`查詢`、`現在多少`、`200日均線`：查詢最新可取得的 `^NDX` 收盤價、SMA200、距離均線點數與百分比
 
 ## Google Cloud Deployment
 
@@ -157,6 +160,21 @@ gcloud run jobs create ndx-signal-check \
 gcloud run jobs execute ndx-signal-check --region "$REGION" --wait
 ```
 
+建立測試推播 job，之後可手動確認 LINE 推播鏈路：
+
+```bash
+gcloud run jobs create ndx-signal-test-push \
+  --image "$IMAGE" \
+  --region "$REGION" \
+  --service-account "$RUN_SA" \
+  --command=python \
+  --args="-m,ndx_signal,test-push" \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID" \
+  --set-secrets "LINE_CHANNEL_ACCESS_TOKEN=line-channel-access-token:latest"
+
+gcloud run jobs execute ndx-signal-test-push --region "$REGION" --wait
+```
+
 設定 Cloud Scheduler，每週二到週六台北時間 06:10 執行，避開美股收盤前：
 
 ```bash
@@ -183,4 +201,4 @@ python -m pip install -e ".[dev]"
 python -m pytest
 ```
 
-測試涵蓋 SMA 穿越訊號、去重、多使用者推播、LINE webhook 簽章驗證與訂閱指令。
+測試涵蓋 SMA 穿越訊號、SMA 距離查詢、去重、多使用者推播、測試推播、LINE webhook 簽章驗證與訂閱指令。

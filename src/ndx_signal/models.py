@@ -35,6 +35,31 @@ class SignalResult:
 
 
 @dataclass(frozen=True)
+class SmaStatus:
+    symbol: str
+    window: int
+    date: date
+    close: float
+    sma: float
+
+    @property
+    def distance(self) -> float:
+        return self.close - self.sma
+
+    @property
+    def distance_percent(self) -> float:
+        return self.distance / self.sma * 100
+
+    @property
+    def position_label(self) -> str:
+        if self.distance > 0:
+            return "高於"
+        if self.distance < 0:
+            return "低於"
+        return "等於"
+
+
+@dataclass(frozen=True)
 class Subscriber:
     user_id: str
     display_name: Optional[str] = None
@@ -63,3 +88,12 @@ class CheckRunSummary:
     retryable_failed_count: int
     duplicate: bool
     send_enabled: bool
+
+
+@dataclass(frozen=True)
+class PushRunSummary:
+    subscriber_count: int
+    sent_count: int
+    failed_count: int
+    retryable_failed_count: int
+    message: str

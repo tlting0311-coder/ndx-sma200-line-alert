@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Callable, Iterable, Optional
 
-from ndx_signal.models import NONE, CheckRunSummary, PriceBar, PushResult
+from ndx_signal.models import NONE, CheckRunSummary, PriceBar, PushResult, PushRunSummary
 from ndx_signal.signals import evaluate_sma_cross, format_signal_message
 from ndx_signal.store import AlertStore
 
@@ -114,4 +114,40 @@ def run_check(
         retryable_failed_count=retryable_failed_count,
         duplicate=duplicate,
         send_enabled=send,
+    )
+
+
+def run_test_push(
+    store: AlertStore,
+    line_client: PushClientProtocol,
+    message: str,
+) -> PushRunSummary:
+    subscribers = list(store.list_active_subscribers())
+    sent_count = 0
+    failed_count = 0
+    retryable_failed_count = 0
+
+    for subscriber in subscribers:
+        push_result = line_client.push_text(subscriber.user_id, message)
+        if push_result.ok:
+            sent_count += 1
+            continue
+
+        failed_count += 1
+        if push_result.retryable:
+            retryable_failed_count += 1
+        logger.warning(
+            "Test LINE push failure user_id=%s status=%s retryable=%s error=%s",
+            subscriber.user_id,
+            push_result.status_code,
+            push_result.retryable,
+            push_result.error,
+        )
+
+    return PushRunSummary(
+        subscriber_count=len(subscribers),
+        sent_count=sent_count,
+        failed_count=failed_count,
+        retryable_failed_count=retryable_failed_count,
+        message=message,
     )

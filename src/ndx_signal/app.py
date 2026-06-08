@@ -1,21 +1,31 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Iterable, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ndx_signal.config import Settings
 from ndx_signal.line_client import LineClient, verify_line_signature
+from ndx_signal.market import load_yfinance_bars
+from ndx_signal.models import PriceBar
+from ndx_signal.signals import (
+    InsufficientDataError,
+    evaluate_sma_status,
+    format_sma_status_message,
+)
 from ndx_signal.store import AlertStore, FirestoreStore
 
 logger = logging.getLogger(__name__)
+
+MarketLoader = Callable[[str], Iterable[PriceBar]]
 
 
 def create_app(
     settings: Optional[Settings] = None,
     store: Optional[AlertStore] = None,
     line_client: Optional[LineClient] = None,
+    market_loader: MarketLoader = load_yfinance_bars,
 ) -> FastAPI:
     app = FastAPI(title="NDX SMA200 LINE Alert")
     state: Dict[str, Any] = {
@@ -60,14 +70,26 @@ def create_app(
 
         payload = await request.json()
         for event in payload.get("events", []):
-            _handle_line_event(event, get_store(), get_line_client())
+            _handle_line_event(
+                event,
+                get_store(),
+                get_line_client(),
+                get_settings(),
+                market_loader,
+            )
 
         return {"ok": True}
 
     return app
 
 
-def _handle_line_event(event: dict, store: AlertStore, line_client: LineClient) -> None:
+def _handle_line_event(
+    event: dict,
+    store: AlertStore,
+    line_client: LineClient,
+    settings: Settings,
+    market_loader: MarketLoader,
+) -> None:
     source = event.get("source") or {}
     user_id = source.get("userId")
     reply_token = event.get("replyToken")
@@ -106,8 +128,44 @@ def _handle_line_event(event: dict, store: AlertStore, line_client: LineClient) 
         else:
             reply = "目前狀態：尚未訂閱。請輸入「訂閱」開始接收通知。"
         _reply_if_possible(line_client, reply_token, reply)
+    elif _is_market_status_query(text):
+        try:
+            status = evaluate_sma_status(
+                market_loader(settings.symbol),
+                window=settings.sma_window,
+                symbol=settings.symbol,
+            )
+            reply = format_sma_status_message(status)
+        except Exception as exc:
+            if not isinstance(exc, InsufficientDataError):
+                logger.exception("Failed to load SMA status")
+            else:
+                logger.warning("Insufficient data for SMA status: %s", exc)
+            reply = "暫時查不到 Nasdaq 100 SMA200 行情資料，請稍後再試。"
+        _reply_if_possible(line_client, reply_token, reply)
     else:
-        _reply_if_possible(line_client, reply_token, "請輸入「訂閱」、「取消」或「狀態」。")
+        _reply_if_possible(
+            line_client,
+            reply_token,
+            "請輸入「訂閱」、「取消」、「狀態」或「NDX」。",
+        )
+
+
+def _is_market_status_query(text: str) -> bool:
+    normalized = text.strip().lower().replace(" ", "")
+    keywords = (
+        "ndx",
+        "nasdaq",
+        "納斯達克",
+        "那斯達克",
+        "查詢",
+        "現在多少",
+        "200日",
+        "200日均線",
+        "sma200",
+        "均線",
+    )
+    return any(keyword in normalized for keyword in keywords)
 
 
 def _reply_if_possible(line_client: LineClient, reply_token: Optional[str], text: str) -> None:

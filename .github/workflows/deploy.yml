@@ -15,6 +15,7 @@ env:
   ARTIFACT_REPOSITORY: ndx-signal
   SERVICE_NAME: ndx-signal-webhook
   JOB_NAME: ndx-signal-check
+  TEST_JOB_NAME: ndx-signal-test-push
   SYMBOL: ^NDX
   SMA_WINDOW: "200"
   TIMEZONE: Asia/Taipei
@@ -41,12 +42,16 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
 
+      - name: Authenticate Docker to Artifact Registry
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+
       - name: Build and push image
         env:
           IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/ndx-signal:${{ github.sha }}
         run: |
-          gcloud config set project "$PROJECT_ID"
-          gcloud builds submit --tag "$IMAGE" .
+          docker build --tag "$IMAGE" .
+          docker push "$IMAGE"
 
       - name: Deploy webhook service
         env:
@@ -79,6 +84,26 @@ jobs:
             --command=python \
             "--args=-m,ndx_signal,check,--send" \
             --set-env-vars "SYMBOL=$SYMBOL,SMA_WINDOW=$SMA_WINDOW,TIMEZONE=$TIMEZONE,GOOGLE_CLOUD_PROJECT=$PROJECT_ID" \
+            --set-secrets "LINE_CHANNEL_ACCESS_TOKEN=line-channel-access-token:latest"
+
+      - name: Create or update test push job
+        env:
+          IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/ndx-signal:${{ github.sha }}
+          RUN_SA: ndx-signal-run@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+        run: |
+          if gcloud run jobs describe "$TEST_JOB_NAME" --region "$REGION" >/dev/null 2>&1; then
+            JOB_ACTION=update
+          else
+            JOB_ACTION=create
+          fi
+
+          gcloud run jobs "$JOB_ACTION" "$TEST_JOB_NAME" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --service-account "$RUN_SA" \
+            --command=python \
+            "--args=-m,ndx_signal,test-push" \
+            --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID" \
             --set-secrets "LINE_CHANNEL_ACCESS_TOKEN=line-channel-access-token:latest"
 
       - name: Show webhook URL
